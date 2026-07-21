@@ -39,3 +39,14 @@
 - Decided against committing `.tfstate` to VCS (contains resource
   metadata, risk of conflicts/exposure) — added to `.gitignore`
 - Chose to commit `.terraform.lock.hcl` for provider version reproducibility
+
+## Known Tradeoffs / Talking Points
+
+- Passwords passed via Terraform variables end up in plaintext in
+  rendered user_data and in terraform.tfstate — `sensitive = true` only
+  masks CLI/log output, doesn't encrypt state. Production fix: Secrets
+  Manager + IAM-authenticated fetch at boot.
+- Local Terraform state (not S3 backend) — acceptable for solo lab,
+  but no encryption at rest, no locking, no team-shared history.
+- SSH manual key pair used instead of Terraform-generated, to keep
+  private key material out of state file.

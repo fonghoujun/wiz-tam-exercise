@@ -23,3 +23,15 @@ variable "availability_zones" {
   type    = list(string)
   default = ["us-east-1a", "us-east-1b"]
 }
+
+variable "mongo_admin_password" {
+  description = "MongoDB admin user password"
+  type        = string
+  sensitive   = true
+}
+
+variable "mongo_app_password" {
+  description = "MongoDB app user password"
+  type        = string
+  sensitive   = true
+}

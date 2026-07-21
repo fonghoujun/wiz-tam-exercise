@@ -21,3 +21,29 @@ module "network" {
   private_subnet_cidrs = var.private_subnet_cidrs
   availability_zones     = var.availability_zones
 }
+
+module "eks" {
+  source = "./modules/eks"
+
+  vpc_id              = module.network.vpc_id
+  private_subnet_ids  = module.network.private_subnet_ids
+  public_subnet_ids   = module.network.public_subnet_ids
+}
+
+module "storage" {
+  source = "./modules/storage"
+
+  project_name = "wiz-tam"
+  environment  = "dev"
+}
+
+module "mongo_vm" {
+  source = "./modules/mongo-vm"
+
+  vpc_id                     = module.network.vpc_id
+  public_subnet_id           = module.network.public_subnet_ids[0]
+  eks_node_security_group_id = module.eks.node_security_group_id
+  backup_bucket_name         = module.storage.bucket_name
+  mongo_admin_password       = var.mongo_admin_password
+  mongo_app_password         = var.mongo_app_password
+}
