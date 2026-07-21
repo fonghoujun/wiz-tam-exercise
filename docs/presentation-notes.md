@@ -40,6 +40,55 @@
   metadata, risk of conflicts/exposure) — added to `.gitignore`
 - Chose to commit `.terraform.lock.hcl` for provider version reproducibility
 
+## Phase 2 — MongoDB VM
+
+**What was built:**
+- EC2 instance (t3.small) running Ubuntu 20.04 (EOL April 2025) in a public subnet
+- MongoDB 4.4 (EOL Feb 2024) installed via user_data bootstrap script
+- Auth enabled (verified: unauthenticated listDatabases correctly rejected)
+- Daily cron job (2am) running mongodump -> tarball -> S3 upload
+
+**Intentional misconfigurations (per spec):**
+- SSH (22) open to 0.0.0.0/0
+- IAM instance role attached with AmazonEC2FullAccess (broad EC2 permissions)
+
+**Correctly-restricted control (per spec):**
+- MongoDB (27017) only reachable from EKS node security group, not a public CIDR
+
+## Phase 3 — Storage
+
+**What was built:**
+- S3 bucket (name suffixed with AWS account ID for global uniqueness)
+- Versioning enabled
+
+**Intentional misconfiguration (per spec):**
+- All 4 S3 Block Public Access settings explicitly disabled
+- Bucket policy grants anonymous s3:GetObject + s3:ListBucket
+- Verified via manual mongo-backup.sh run + unauthenticated download test
+
+## Phase 4 — EKS Cluster
+
+**What was built:**
+- EKS cluster (Kubernetes 1.33) with control plane across public+private subnets
+- Managed node group (2x t3.medium) in private subnets only
+- Custom node security group + launch template (rather than EKS default) for
+  explicit control over what Mongo's SG could reference
+- Core add-ons (vpc-cni, coredns, kube-proxy) via Terraform
+
+**Challenge encountered:**
+- Node group stuck in CREATING for 30+ minutes with EC2/ASG showing healthy
+  instances, but kubectl get nodes returned empty
+- Diagnosed by checking layers independently: EC2 instance state (healthy) ->
+  ASG state (InService) -> EKS node group health (no reported issues) ->
+  Kubernetes join state (empty) -> cluster security group rules (only a
+  self-referencing rule, no inbound path from the custom node SG)
+- Root cause: custom node SG had no explicit rule allowing communication
+  with the cluster's auto-generated SG on 443; nodes could launch at the
+  EC2 level but kubelet couldn't reach the API server to register
+- Fix: added the cluster security group to the node launch template's
+  vpc_security_group_ids, tainted and recreated the node group -> joined
+  in under 2 minutes
+
 ## Known Tradeoffs / Talking Points
 
 - Passwords passed via Terraform variables end up in plaintext in
@@ -50,3 +99,39 @@
   but no encryption at rest, no locking, no team-shared history.
 - SSH manual key pair used instead of Terraform-generated, to keep
   private key material out of state file.
+
+- **Mongo credentials in plaintext**: mongo_admin_password / mongo_app_password
+  are passed as Terraform variables (sensitive = true), but that only masks
+  CLI/log output — they still land in plaintext inside the rendered user_data
+  script and in terraform.tfstate. Production fix: AWS Secrets Manager,
+  fetched by the instance at boot via its IAM role, never passed through
+  Terraform state at all.
+
+- **Local Terraform state**: no S3 backend configured, so state lives only
+  on this machine. Fine for a solo lab; in production this means no locking
+  (risk of concurrent-apply corruption), no encryption at rest, no shared
+  history across a team, and a single point of failure if the laptop is lost.
+
+- **Mongo VM IAM role is intentionally over-broad**: AmazonEC2FullAccess
+  attached to the instance role (required misconfig per spec). Blast radius:
+  a compromised VM (e.g. via the open SSH port) could create/terminate/modify
+  any EC2 resource in the account. Production fix: least-privilege role
+  scoped to only the specific actions the instance needs.
+
+- **S3 bucket is genuinely public**: all 4 Block Public Access protections
+  disabled, policy grants anonymous GetObject + ListBucket (required
+  misconfig per spec). Verified accessible without AWS credentials. Contains
+  only Mongo backups for this exercise — in production this would expose
+  potentially sensitive data to the entire internet indefinitely.
+
+- **Custom node security group required manual wiring to the cluster SG**:
+  EKS's default node group setup handles node-to-control-plane connectivity
+  automatically; building a custom SG for Mongo's sake meant that safety net
+  was lost, and the missing rule wasn't obvious until diagnosed layer by
+  layer. Worth noting as a real example of a security-driven design choice
+  needing extra care to keep functional.
+
+- **SSH key pair created manually, not via Terraform**: avoids private key
+  material ever touching Terraform state, at the cost of one manual setup
+  step outside IaC. Reasonable tradeoff for this exercise; in production,
+  SSM Session Manager would remove the need for SSH/key pairs entirely.
