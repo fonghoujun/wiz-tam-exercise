@@ -9,7 +9,7 @@
 - Internet Gateway attached to VPC, routed from public subnets
 - 1 NAT Gateway (in public subnet A) + Elastic IP, routed from private subnets
 - Separate route tables for public (→ IGW) and private (→ NAT) traffic
-![VPC Resource Map](vpc-resource-map.png)
+![VPC Resource Map](images/vpc-resource-map.png)
 
 **Why this design:**
 - 2 AZs minimum required by EKS control plane for HA
