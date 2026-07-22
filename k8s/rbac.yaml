@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tasky-service-account
+  namespace: default
+
+---
+# Intentional over-privilege (required by exercise spec):
+# binds the app's ServiceAccount to cluster-admin, granting it full
+# control over the entire cluster - any pod using this ServiceAccount
+# could read/modify/delete anything, in any namespace, including secrets,
+# other workloads, and RBAC itself.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tasky-cluster-admin-binding
+subjects:
+  - kind: ServiceAccount
+    name: tasky-service-account
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io

@@ -17,3 +17,5 @@
 Thumbs.db
 
 kubectl.exe
+
+k8s/secret.yaml

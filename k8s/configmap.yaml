@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tasky-config
+  namespace: default
+data:
+  APP_PORT: "8080"

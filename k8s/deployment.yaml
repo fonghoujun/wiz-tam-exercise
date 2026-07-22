@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tasky-deployment
+  namespace: default
+  labels:
+    app: tasky
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tasky
+  template:
+    metadata:
+      labels:
+        app: tasky
+    spec:
+      serviceAccountName: tasky-service-account
+      containers:
+        - name: tasky
+          image: 334716554729.dkr.ecr.us-east-1.amazonaws.com/wiz-tam/tasky:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: tasky-config
+            - secretRef:
+                name: tasky-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
