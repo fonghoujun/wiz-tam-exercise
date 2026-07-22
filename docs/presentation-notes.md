@@ -89,6 +89,55 @@
   vpc_security_group_ids, tainted and recreated the node group -> joined
   in under 2 minutes
 
+  ## Phase 5 — Kubernetes App Deployment
+
+**What was built:**
+- Tasky (Go + Gin + MongoDB, JWT auth) containerized and pushed to ECR
+- Deployed to EKS: Deployment (2 replicas), Service (type LoadBalancer),
+  ConfigMap (non-sensitive config), Secret (Mongo URI + JWT key),
+  ServiceAccount bound to cluster-admin via ClusterRoleBinding
+- wizexercise.txt copied into the image at build time (Dockerfile COPY),
+  verified via `docker run --entrypoint cat`
+- Verified end-to-end: signup -> login -> add todo -> persisted in the
+  real Mongo VM, confirmed directly via mongo shell
+
+**Intentional misconfiguration (per spec):**
+- App's ServiceAccount bound to cluster-admin ClusterRoleBinding -
+  any pod using this identity has full control over the entire cluster
+
+**Troubleshooting encountered:**
+
+1. Docker image build produced an OCI image index (multi-platform
+   manifest) by default under recent Docker Desktop/BuildKit, which ECR's
+   basic scanning couldn't process (UnsupportedImageTypeException). Fixed
+   with `--provenance=false --sbom=false` on build to force a standard
+   single-manifest image.
+
+2. LoadBalancer Service stuck in Pending: `SyncLoadBalancerFailed` -
+   "Multiple tagged security groups found for instance." Caused by an
+   earlier fix (Phase 4) that added the cluster's auto-generated SG to
+   the node launch template to resolve node-join connectivity - both
+   that SG and the custom node SG carried the `kubernetes.io/cluster/...`
+   ownership tag, which the legacy ELB controller requires to be unique
+   per instance. Fixed by removing the tag from the custom node SG only,
+   since the EKS-owned cluster SG already carries it natively.
+
+3. App reachable, but /signup consistently failed. Pod logs showed
+   `(Unauthorized) not authorized on go-mongodb to execute command` -
+   the app's code hardcodes database name `go-mongodb`
+   (database/database.go), but the Mongo bootstrap script (Phase 2)
+   granted appUser readWrite only on `appdb`. Fixed by granting appUser
+   an additional readWrite role scoped to go-mongodb, connecting in the
+   correct db context (appdb, where the user document itself lives -
+   MongoDB users are namespaced to their creation db even when granting
+   roles on a different db).
+
+4. Separately noted: Tasky's own frontend JS has a bug where failed
+   signup/login responses render as literal "{}" in the browser
+   (`JSON.stringify(response.json())` without awaiting the Promise) -
+   diagnosed the real error via pod logs / Network tab instead of
+   trusting the on-screen message.
+
 ## Known Tradeoffs / Talking Points
 
 - Passwords passed via Terraform variables end up in plaintext in
@@ -135,3 +184,14 @@
   material ever touching Terraform state, at the cost of one manual setup
   step outside IaC. Reasonable tradeoff for this exercise; in production,
   SSM Session Manager would remove the need for SSH/key pairs entirely.
+
+  - **App's own frontend has an unawaited-Promise bug** masking real error
+  messages on signup/login failure - not something introduced by this
+  deployment, but worth knowing the actual error surface (pod logs,
+  browser Network tab) rather than trusting the UI when debugging.
+
+- **Mongo database-name mismatch between app code and IaC** highlights a
+  general risk: application code and infrastructure-as-code are often
+  authored/maintained separately, and their assumptions (db names, schema,
+  auth scope) can silently drift out of sync without integration testing
+  catching it until runtime.
