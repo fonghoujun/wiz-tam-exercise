@@ -186,6 +186,32 @@ AdministratorAccess for simplicity in this lab. Production equivalent:
 scope down to only the specific EKS/EC2/S3/ECR/IAM actions the pipeline
 actually calls.
 
+## Phase 7 — Cloud Native Security (optional)
+
+**What was built:**
+- CloudTrail: multi-region trail, log file validation enabled, logs to a
+  dedicated (non-public) S3 bucket separate from application data
+- GuardDuty: account-wide detector enabled, verified via AWS-provided
+  sample findings (Recon:EC2/PortProbeUnprotectedPort,
+  UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration.OutsideAWS)
+- Preventative control: EKS public API endpoint restricted from 0.0.0.0/0
+  to a single admin IP (/32) - directly closing a gap flagged back in
+  Phase 4 as "left open, to tighten later"
+
+**Known tradeoff, explicitly identified before applying:**
+- Restricting the EKS endpoint to a single IP breaks the GitHub Actions
+  build-deploy pipeline's ability to run kubectl commands, since
+  GitHub-hosted runners use dynamic, unpredictable IPs
+- Decided to accept this tradeoff deliberately rather than widen access:
+  favored the tighter security posture given the pipeline wasn't expected
+  to need further runs before the interview
+- Production alternatives considered: GitHub-hosted runner IP allowlisting
+  (rotates, not fully reliable), self-hosted runners inside the VPC, or
+  a VPN/PrivateLink connection dedicated to CI/CD
+- This highlights a common real-world tension between tightening access
+  and preserving automation - worth discussing as a deliberate,
+  documented choice rather than an oversight
+
 ## Known Tradeoffs / Talking Points
 
 - Passwords passed via Terraform variables end up in plaintext in
