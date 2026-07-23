@@ -54,3 +54,8 @@ variable "environment" {
   type    = string
   default = "dev"
 }
+
+variable "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions, granted Kubernetes access"
+  type        = string
+}

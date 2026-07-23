@@ -29,9 +29,10 @@ module "network" {
 module "eks" {
   source = "./modules/eks"
 
-  vpc_id             = module.network.vpc_id
-  private_subnet_ids = module.network.private_subnet_ids
-  public_subnet_ids  = module.network.public_subnet_ids
+  vpc_id                  = module.network.vpc_id
+  private_subnet_ids      = module.network.private_subnet_ids
+  public_subnet_ids       = module.network.public_subnet_ids
+  github_actions_role_arn = module.oidc.role_arn
 }
 
 module "storage" {

@@ -72,7 +72,7 @@ resource "aws_security_group" "node" {
   }
 
   tags = merge(local.common_tags, {
-    Name                                          = "${var.cluster_name}-node-sg"
+    Name = "${var.cluster_name}-node-sg"
     #"kubernetes.io/cluster/${var.cluster_name}"    = "owned"
   })
 }
@@ -105,9 +105,14 @@ resource "aws_eks_cluster" "main" {
 
   vpc_config {
     subnet_ids              = concat(var.private_subnet_ids, var.public_subnet_ids)
-    endpoint_public_access   = true
-    endpoint_private_access  = true
-    public_access_cidrs      = ["0.0.0.0/0"]
+    endpoint_public_access  = true
+    endpoint_private_access = true
+    public_access_cidrs     = ["0.0.0.0/0"]
+  }
+
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
   }
 
   tags = merge(local.common_tags, {
@@ -155,7 +160,7 @@ resource "aws_launch_template" "node" {
 
   vpc_security_group_ids = [
     aws_security_group.node.id,
-    aws_eks_cluster.main.vpc_config[0].cluster_security_group_id]
+  aws_eks_cluster.main.vpc_config[0].cluster_security_group_id]
 
   tag_specifications {
     resource_type = "instance"
@@ -183,4 +188,23 @@ resource "aws_eks_addon" "coredns" {
 resource "aws_eks_addon" "kube_proxy" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "kube-proxy"
+}
+
+# Grants the GitHub Actions IAM role Kubernetes-level access to this
+# cluster, separate from (and in addition to) its AWS IAM permissions.
+# Without this, the role can call EKS APIs (e.g. update-kubeconfig) but
+# every kubectl command is rejected by the Kubernetes API server itself.
+resource "aws_eks_access_entry" "github_actions" {
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.github_actions_role_arn
+}
+
+resource "aws_eks_access_policy_association" "github_actions_admin" {
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.github_actions_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
 }
