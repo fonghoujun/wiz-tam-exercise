@@ -138,6 +138,36 @@
    diagnosed the real error via pod logs / Network tab instead of
    trusting the on-screen message.
 
+## Phase 6 — Dev(Sec)Ops: Terraform CI/CD Pipeline
+
+**What was built:**
+- GitHub Actions workflow (terraform.yml): Checkov IaC scan -> Terraform
+  plan (OIDC-authenticated) -> Terraform apply (auto on push to master)
+- OIDC federation: no long-lived AWS credentials stored in GitHub -
+  a short-lived token is exchanged for temporary AWS credentials scoped
+  to a specific IAM role, per workflow run
+- Plan artifact passed between plan and apply jobs, so apply executes
+  exactly what was reviewed rather than re-planning at apply time
+
+**Troubleshooting encountered:**
+- AssumeRoleWithWebIdentity consistently denied ("Not authorized") despite
+  IAM trust policy, OIDC provider, and GitHub secret all appearing correct
+- Diagnosed via CloudTrail (`lookup-events` for AssumeRoleWithWebIdentity),
+  which surfaced the actual `sub` claim GitHub's token presented:
+  `repo:org@<numeric-id>/repo@<numeric-id>:ref:refs/heads/master`
+- Root cause: GitHub has changed its OIDC `sub` claim format to embed
+  immutable numeric org/repo IDs (preventing trust-relationship hijacking
+  via repo/org renames) - the trust policy's StringLike condition
+  (`repo:org/repo:*`) didn't account for these `@id` suffixes and never
+  matched
+- Fixed by widening the StringLike pattern to `repo:org*/repo*:*`,
+  re-applied, confirmed successful run
+
+**Known tradeoff:** the GitHub Actions IAM role currently uses
+AdministratorAccess for simplicity in this lab. Production equivalent:
+scope down to only the specific EKS/EC2/S3/ECR/IAM actions the pipeline
+actually calls.
+
 ## Known Tradeoffs / Talking Points
 
 - Passwords passed via Terraform variables end up in plaintext in
@@ -195,3 +225,5 @@
   authored/maintained separately, and their assumptions (db names, schema,
   auth scope) can silently drift out of sync without integration testing
   catching it until runtime.
+
+- 
