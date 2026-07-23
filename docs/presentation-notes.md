@@ -212,6 +212,41 @@ actually calls.
   and preserving automation - worth discussing as a deliberate,
   documented choice rather than an oversight
 
+**Additional troubleshooting (Phase 7 apply via CI):**
+- Pushing Phase 7 changes directly to master was correctly rejected by
+  branch protection ("Changes must be made through a pull request") -
+  live confirmation the control was functioning, not just configured
+- Routed through a feature branch + PR as designed. Two further gaps
+  surfaced only in CI, not locally:
+  1. `my_ip_cidr` variable had no CI source (only existed in local,
+     gitignored terraform.tfvars) - added as a GitHub Actions repository
+     Variable (not Secret, since a public IP isn't sensitive) and wired
+     into the plan step
+  2. A required status check (build-scan-push) never triggers on PRs
+     that don't touch app/ or k8s/ paths, permanently blocking merge
+     ("waiting for status to be reported") - a known GitHub Actions
+     limitation with path-filtered required checks. Resolved by scoping
+     required checks to only those relevant to each pipeline's actual
+     trigger conditions
+- As a solo developer, self-approval isn't possible under standard PR
+  review rules (by design) - temporarily adjusted the approval
+  requirement to merge, noting that in a team setting this would
+  require a second reviewer, which is the correct intended behavior
+- This sequence is a good example of how CI/CD surfaces environment
+  assumptions (local tfvars, single-developer approval flow) that don't
+  hold once work moves through a shared, automated pipeline
+
+**Additional consequence of the local-state gap (discovered later):**
+- Before the S3 backend migration, CI runs using ephemeral local state
+  successfully created duplicate VPC/networking infrastructure (VPC has
+  no global name-uniqueness constraint, unlike IAM roles or S3 buckets,
+  so it didn't fail the way those did) before erroring out downstream
+- Result: 2 orphaned VPCs with their own NAT Gateways silently accruing
+  cost, invisible to `terraform destroy` since they were never in the
+  real, tracked state
+- Reinforces why shared remote state isn't just about collaboration -
+  it also prevents CI from unknowingly duplicating live infrastructure
+
 ## Known Tradeoffs / Talking Points
 
 - Passwords passed via Terraform variables end up in plaintext in
