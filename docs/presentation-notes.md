@@ -162,6 +162,24 @@
   matched
 - Fixed by widening the StringLike pattern to `repo:org*/repo*:*`,
   re-applied, confirmed successful run
+- After fixing OIDC auth, `kubectl apply` in the deploy job failed with
+  "the server has asked for the client to provide credentials" - despite
+  AWS-level auth (OIDC) working correctly
+- Root cause: EKS has two separate authorization layers - AWS IAM (governs
+  which principals can call EKS APIs) and Kubernetes-level access (governs
+  which identities the Kubernetes API server itself recognizes as valid
+  users). The GitHub Actions IAM role could call `update-kubeconfig`
+  successfully but had never been granted Kubernetes-level access
+- Further complicated by the cluster's authentication mode defaulting to
+  CONFIG_MAP-only, which doesn't support the modern EKS Access Entry API
+- Fixed in two steps: (1) set cluster authentication_mode to
+  API_AND_CONFIG_MAP (preserving existing aws-auth ConfigMap compatibility
+  and the cluster creator's own admin access), (2) created an EKS Access
+  Entry + Access Policy Association granting the GitHub Actions role
+  cluster-admin access at the Kubernetes level
+- This distinction (AWS IAM vs. Kubernetes RBAC/access entries) is a
+  common point of confusion when automating EKS deployments and worth
+  articulating clearly if asked about IAM/RBAC layering
 
 **Known tradeoff:** the GitHub Actions IAM role currently uses
 AdministratorAccess for simplicity in this lab. Production equivalent:
