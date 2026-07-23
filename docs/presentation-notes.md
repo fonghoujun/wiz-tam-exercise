@@ -236,6 +236,17 @@ actually calls.
   assumptions (local tfvars, single-developer approval flow) that don't
   hold once work moves through a shared, automated pipeline
 
+**Additional consequence of the local-state gap (discovered later):**
+- Before the S3 backend migration, CI runs using ephemeral local state
+  successfully created duplicate VPC/networking infrastructure (VPC has
+  no global name-uniqueness constraint, unlike IAM roles or S3 buckets,
+  so it didn't fail the way those did) before erroring out downstream
+- Result: 2 orphaned VPCs with their own NAT Gateways silently accruing
+  cost, invisible to `terraform destroy` since they were never in the
+  real, tracked state
+- Reinforces why shared remote state isn't just about collaboration -
+  it also prevents CI from unknowingly duplicating live infrastructure
+
 ## Known Tradeoffs / Talking Points
 
 - Passwords passed via Terraform variables end up in plaintext in

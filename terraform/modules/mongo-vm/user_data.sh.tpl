@@ -59,4 +59,7 @@ SCRIPT
 chmod +x /usr/local/bin/mongo-backup.sh
 
 # --- Daily cron job (2am) ---
-echo "0 2 * * * root /usr/local/bin/mongo-backup.sh >> /var/log/mongo-backup.log 2>&1" > /etc/cron.d/mongo-backup
+cat > /etc/cron.d/mongo-backup <<'CRON'
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 2 * * * root /usr/local/bin/mongo-backup.sh >> /var/log/mongo-backup.log 2>&1
+CRON
