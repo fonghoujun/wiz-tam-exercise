@@ -59,3 +59,9 @@ variable "github_actions_role_arn" {
   description = "IAM role ARN for GitHub Actions, granted Kubernetes access"
   type        = string
 }
+
+variable "allowed_public_cidrs" {
+  description = "CIDR blocks allowed to reach the EKS public API endpoint"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
