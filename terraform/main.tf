@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -19,15 +23,15 @@ module "network" {
   vpc_cidr             = var.vpc_cidr
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
-  availability_zones     = var.availability_zones
+  availability_zones   = var.availability_zones
 }
 
 module "eks" {
   source = "./modules/eks"
 
-  vpc_id              = module.network.vpc_id
-  private_subnet_ids  = module.network.private_subnet_ids
-  public_subnet_ids   = module.network.public_subnet_ids
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+  public_subnet_ids  = module.network.public_subnet_ids
 }
 
 module "storage" {
@@ -46,4 +50,11 @@ module "mongo_vm" {
   backup_bucket_name         = module.storage.bucket_name
   mongo_admin_password       = var.mongo_admin_password
   mongo_app_password         = var.mongo_app_password
+}
+
+module "oidc" {
+  source = "./modules/oidc"
+
+  github_org  = "fonghoujun"
+  github_repo = "wiz-tam-exercise"
 }
