@@ -70,6 +70,7 @@ jobs:
           terraform plan \
             -var="mongo_admin_password=${{ secrets.MONGO_ADMIN_PASSWORD }}" \
             -var="mongo_app_password=${{ secrets.MONGO_APP_PASSWORD }}" \
+            -var="my_ip_cidr=${{ vars.MY_IP_CIDR }}" \
             -out=tfplan
 
       - name: Upload plan artifact

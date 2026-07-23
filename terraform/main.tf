@@ -33,6 +33,7 @@ module "eks" {
   private_subnet_ids      = module.network.private_subnet_ids
   public_subnet_ids       = module.network.public_subnet_ids
   github_actions_role_arn = module.oidc.role_arn
+  allowed_public_cidrs    = [var.my_ip_cidr]
 }
 
 module "storage" {
@@ -58,4 +59,10 @@ module "oidc" {
 
   github_org  = "fonghoujun"
   github_repo = "wiz-tam-exercise"
+}
+
+module "security" {
+  source = "./modules/security"
+
+  allowed_ip_cidr = var.my_ip_cidr
 }

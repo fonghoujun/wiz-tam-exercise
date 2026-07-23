@@ -35,3 +35,8 @@ variable "mongo_app_password" {
   type        = string
   sensitive   = true
 }
+
+variable "my_ip_cidr" {
+  description = "Your public IP in CIDR notation (e.g. 1.2.3.4/32)"
+  type        = string
+}
