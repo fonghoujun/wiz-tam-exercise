@@ -28,7 +28,7 @@ resource "aws_iam_role" "github_actions" {
         StringLike = {
           # Scoped to this specific repo, any branch - tighten to
           # "repo:org/repo:ref:refs/heads/main" for stricter production use
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*"
+          "token.actions.githubusercontent.com:sub" = "repo:fonghoujun*/wiz-tam-exercise*:*"
         }
       }
     }]
