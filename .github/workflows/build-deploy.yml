@@ -1,0 +1,105 @@
+name: Build and Deploy Tasky App
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'app/**'
+      - 'k8s/**'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: wiz-tam/tasky
+  EKS_CLUSTER_NAME: wiz-tam-eks
+  ECR_REGISTRY: 334716554729.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+  build-scan-push:
+    name: Build, Scan, and Push Image
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.vars.outputs.image-tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: vars
+        run: echo "image-tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image
+        working-directory: app
+        run: |
+          docker build --provenance=false --sbom=false \
+            -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.image-tag }} \
+            -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest \
+            .
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.image-tag }}
+          format: table
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'   # report only, don't block - app intentionally
+                           # uses outdated base images (golang:1.19, alpine:3.17.0)
+
+      - name: Push image to ECR
+        run: |
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.image-tag }}
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+
+  deploy:
+    name: Deploy to EKS
+    needs: build-scan-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+      - name: Apply RBAC and ConfigMap
+        run: |
+          kubectl apply -f k8s/rbac.yaml
+          kubectl apply -f k8s/configmap.yaml
+
+      - name: Apply Secret (generated from GitHub Secrets, never committed)
+        run: |
+          kubectl create secret generic tasky-secrets \
+            --from-literal=MONGODB_URI="${{ secrets.MONGODB_URI }}" \
+            --from-literal=SECRET_KEY="${{ secrets.APP_SECRET_KEY }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply Service
+        run: kubectl apply -f k8s/service.yaml
+
+      - name: Apply Deployment
+        run: kubectl apply -f k8s/deployment.yaml
+
+      - name: Update image and roll out
+        run: |
+          kubectl set image deployment/tasky-deployment \
+            tasky=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.build-scan-push.outputs.image-tag }}
+          kubectl rollout status deployment/tasky-deployment --timeout=120s
